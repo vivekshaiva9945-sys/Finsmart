@@ -1,0 +1,75 @@
+services:
+  database:
+    image: pgvector/pgvector:pg16
+    container_name: finsmart-database
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-finsmart_db}
+      POSTGRES_USER: ${POSTGRES_USER:-finsmart_admin}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change_me_admin}
+      APP_DB_USER: ${APP_DB_USER:-finsmart_app}
+      APP_DB_PASSWORD: ${APP_DB_PASSWORD:-change_me_app}
+    ports:
+      - "${DB_PORT:-5432}:5432"
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+      - ./docker/01-roles.sh:/docker-entrypoint-initdb.d/01-roles.sh:ro
+      - ./docker/02-schema.sql:/docker-entrypoint-initdb.d/02-schema.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      - finsmart-network
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: finsmart-backend
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${APP_DB_USER:-finsmart_app}:${APP_DB_PASSWORD:-change_me_app}@database:5432/${POSTGRES_DB:-finsmart_db}
+      JWT_SECRET: ${JWT_SECRET:-super_secret_finsmart_jwt_key_at_least_32_characters_long_2026}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000,http://127.0.0.1:3000}
+    depends_on:
+      database:
+        condition: service_healthy
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./backend:/app
+    networks:
+      - finsmart-network
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: finsmart-frontend
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8000/v1}
+      NEXT_PUBLIC_TENANT: ${NEXT_PUBLIC_TENANT:-public}
+      WATCHPACK_POLLING: "true"
+      CHOKIDAR_USEPOLLING: "true"
+    depends_on:
+      - backend
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    networks:
+      - finsmart-network
+
+volumes:
+  pg_data:
+
+networks:
+  finsmart-network:
+    driver: bridge

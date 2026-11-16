@@ -1,0 +1,16 @@
+# Secrets & Environment variables
+.env
+
+# Excluded subprojects (per user instruction)
+frontend/
+backend/
+
+# Cache & Build Artifacts
+node_modules/
+.next/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+*.log
